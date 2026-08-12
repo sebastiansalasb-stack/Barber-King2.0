@@ -17,6 +17,12 @@ document.addEventListener("DOMContentLoaded", () => {
   if (formAgendar) {
     formAgendar.addEventListener("submit", manejarAgendarCita);
     configurarRangoFecha();
+
+    const selectServicio = document.getElementById("servicio");
+    if (selectServicio) {
+      selectServicio.addEventListener("change", actualizarBarberosDisponibles);
+      actualizarBarberosDisponibles();
+    }
   }
 
   if (listaCitas) {
@@ -29,12 +35,104 @@ const NOMBRES_SERVICIO = {
   corte: "Corte de cabello",
   barba: "Arreglo de barba",
   combo: "Combo (corte + barba)",
+  tinte: "Tinte / Coloración",
+  rizado: "Tratamiento para Cabello Rizado",
+  afro: "Tratamiento para Cabello Afro",
+  ondulado: "Tratamiento para Pelo Ondulado",
+  liso: "Tratamiento para Pelo Liso",
+  combo_tinte: "Combo (Corte + Tinte/Coloración)",
+  cejas: "Perfilado de Cejas",
+  facial: "Tratamiento Facial Express",
+  corte_mujer: "Corte de cabello mujer",
+};
+
+// Precios en colones (₡), informativos: el Sistema no procesa pagos reales.
+const PRECIOS_SERVICIO = {
+  corte: 6000,
+  barba: 4000,
+  combo: 9000,
+  tinte: 12000,
+  rizado: 9000,
+  afro: 9000,
+  ondulado: 9000,
+  liso: 9000,
+  combo_tinte: 14000,
+  cejas: 2500,
+  facial: 6500,
+  corte_mujer: 6000,
 };
 
 const NOMBRES_BARBERO = {
   barbero1: "Alberto Martinez",
   barbero2: "Raul Gonzales",
+  barbero3: "Daniel Rojas",
+  barbero4: "Josué Vargas",
+  barbero5: "Kevin Solano",
+  barbero6: "Andrés Chacón",
+  barbero7: "Luis Fernández",
+  barbero8: "Ana Mora",
+  barbero9: "Valeria Jiménez",
 };
+
+// Cada barbero está especializado en varios servicios. Se reparten para
+// que cada servicio del catálogo tenga al menos 2 (y hasta 3) barberos
+// que lo ofrezcan — así siempre hay opción para elegir.
+const ESPECIALIDADES_BARBERO = {
+  barbero1: ["combo", "corte", "barba"],
+  barbero2: ["combo", "corte", "barba"],
+  barbero3: ["combo", "corte", "barba"],
+  barbero4: ["tinte", "combo_tinte", "cejas"],
+  barbero5: ["cejas", "facial", "ondulado"],
+  barbero6: ["rizado", "afro", "liso"],
+  barbero7: ["ondulado", "liso", "rizado"],
+  barbero8: ["corte_mujer", "tinte", "afro"],
+  barbero9: ["corte_mujer", "facial", "combo_tinte"],
+};
+
+/**
+ * Indica si un barbero está especializado en (puede agendar) un servicio.
+ */
+function barberoOfreceServicio(barbero, servicio) {
+  const especialidades = ESPECIALIDADES_BARBERO[barbero];
+  return Array.isArray(especialidades) && especialidades.includes(servicio);
+}
+
+/**
+ * Al elegir un servicio en "Agendar Cita", oculta del selector de barbero
+ * a quienes no estén especializados en ese servicio. Si el barbero ya
+ * seleccionado deja de calificar, se limpia esa selección.
+ */
+function actualizarBarberosDisponibles() {
+  const selectServicio = document.getElementById("servicio");
+  const selectBarbero = document.getElementById("barbero");
+  if (!selectServicio || !selectBarbero) return;
+
+  const servicioElegido = selectServicio.value;
+  const barberoPrevio = selectBarbero.value;
+
+  Array.from(selectBarbero.options).forEach((opcion) => {
+    if (!opcion.value) return; // deja siempre visible "Selecciona un barbero"
+
+    const disponible = !servicioElegido || barberoOfreceServicio(opcion.value, servicioElegido);
+    opcion.hidden = !disponible;
+    opcion.disabled = !disponible;
+  });
+
+  if (servicioElegido && barberoPrevio && !barberoOfreceServicio(barberoPrevio, servicioElegido)) {
+    selectBarbero.value = "";
+  }
+}
+
+/**
+ * Da formato de colones costarricenses a un monto, ej. formatearColones(6000) -> "₡6.000".
+ */
+function formatearColones(monto) {
+  return new Intl.NumberFormat("es-CR", {
+    style: "currency",
+    currency: "CRC",
+    maximumFractionDigits: 0,
+  }).format(monto);
+}
 
 /**
  * Obtiene todas las citas guardadas (de todos los usuarios) desde localStorage.
@@ -71,6 +169,7 @@ function notificarCancelacionAlAdmin(cita, motivo) {
   const notificaciones = obtenerNotificacionesAdmin();
   notificaciones.push({
     id: Date.now(),
+    barbero: cita.barbero,
     mensaje: `${cita.usuario} canceló su cita de ${NOMBRES_SERVICIO[cita.servicio] || cita.servicio} con ${NOMBRES_BARBERO[cita.barbero] || cita.barbero}, agendada para el ${cita.fecha} a las ${formatearHora12(cita.hora)}. Motivo: ${motivo}`,
   });
   guardarNotificacionesAdmin(notificaciones);
@@ -111,6 +210,7 @@ function crearSolicitudReprogramacion(cita, fechaNueva, horaNueva) {
   const notificaciones = obtenerNotificacionesAdmin();
   notificaciones.push({
     id: Date.now() + 1,
+    barbero: cita.barbero,
     mensaje: `${cita.usuario} quiere reprogramar su cita de ${NOMBRES_SERVICIO[cita.servicio] || cita.servicio} con ${NOMBRES_BARBERO[cita.barbero] || cita.barbero}: del ${cita.fecha} a las ${formatearHora12(cita.hora)}, al ${fechaNueva} a las ${formatearHora12(horaNueva)}. Revísalo en "Solicitudes de Reprogramación".`,
   });
   guardarNotificacionesAdmin(notificaciones);
@@ -414,6 +514,14 @@ function manejarAgendarCita(evento) {
     return;
   }
 
+  if (!barberoOfreceServicio(barbero, servicio)) {
+    mensaje.textContent = `${NOMBRES_BARBERO[barbero] || barbero} no está especializado en "${NOMBRES_SERVICIO[servicio] || servicio}". Elige otro barbero o servicio.`;
+    mensaje.classList.remove("mensaje-exito");
+    mensaje.classList.add("mensaje-error");
+    mensaje.hidden = false;
+    return;
+  }
+
   if (!estaFechaEnRangoValido(fecha)) {
     mensaje.textContent = "Elige una fecha entre hoy y los próximos 12 meses.";
     mensaje.classList.remove("mensaje-exito");
@@ -456,7 +564,8 @@ function manejarAgendarCita(evento) {
   citas.push(nuevaCita);
   guardarCitas(citas);
 
-  mensaje.textContent = "¡Cita agendada con éxito! Puedes revisarla en \"Mis Citas\".";
+  const precioCita = PRECIOS_SERVICIO[servicio];
+  mensaje.textContent = `¡Cita agendada con éxito! Total: ${formatearColones(precioCita)}. Puedes revisarla en "Mis Citas".`;
   mensaje.classList.remove("mensaje-error");
   mensaje.classList.add("mensaje-exito");
   mensaje.hidden = false;
@@ -501,7 +610,8 @@ function renderizarCitas() {
     nombreServicio.textContent = NOMBRES_SERVICIO[cita.servicio] || cita.servicio;
 
     const infoCita = document.createElement("p");
-    infoCita.textContent = `${NOMBRES_BARBERO[cita.barbero] || cita.barbero} · ${cita.fecha} · ${formatearHora12(cita.hora)}`;
+    const precioServicio = PRECIOS_SERVICIO[cita.servicio];
+    infoCita.textContent = `${NOMBRES_BARBERO[cita.barbero] || cita.barbero} · ${cita.fecha} · ${formatearHora12(cita.hora)} · ${precioServicio !== undefined ? formatearColones(precioServicio) : ""}`;
 
     const estadoCita = document.createElement("span");
     const esCompletada = cita.estado === "completada";

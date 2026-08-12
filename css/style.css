@@ -262,6 +262,12 @@ button:focus-visible {
   color: var(--color-texto-secundario);
 }
 
+.ayuda-campo {
+  margin-top: 0.35rem;
+  font-size: 0.85rem;
+  color: var(--color-texto-secundario);
+}
+
 /* --- Inicio y Servicios: tipografía fluida, se adapta al ancho de pantalla --- */
 #inicio h2,
 #servicios h2 {

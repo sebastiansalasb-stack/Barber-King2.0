@@ -1,16 +1,30 @@
 /* =========================================================
    Barber King - admin.js
-   Panel de administrador (Alberto Martinez): login separado del
-   de clientes, y gestión de TODAS las citas (ver, completar, cancelar).
-   Reutiliza obtenerUsuarios/guardarUsuarios/generarSal/hashearContrasena
-   de auth.js, y obtenerCitas/guardarCitas/NOMBRES_* de citas.js.
+   Panel de administrador (los 7 barberos del equipo): login separado
+   del de clientes. Cada administrador ve y gestiona ÚNICAMENTE las
+   citas agendadas con SU barbero asociado (campo "barbero" en su
+   cuenta). Reutiliza obtenerUsuarios/guardarUsuarios/generarSal/
+   hashearContrasena de auth.js, y obtenerCitas/guardarCitas/
+   NOMBRES_* de citas.js.
    ========================================================= */
 
 const CLAVE_SESION_ADMIN = "barberking_sesion_admin";
 
-const ADMIN_USUARIO = "alberto.martinez";
-const ADMIN_NOMBRE = "Alberto Martinez";
-const ADMIN_CONTRASENA_INICIAL = "Barbero2026!";
+// Cuentas de administrador que se crean automáticamente la primera vez
+// que se abre admin-login.html, si todavía no existen en localStorage.
+// "barberoAsociado" vincula la cuenta con una clave de NOMBRES_BARBERO
+// (js/citas.js), para que cada administrador solo vea sus propias citas.
+const CUENTAS_ADMIN_INICIALES = [
+  { usuario: "alberto.martinez", nombre: "Alberto Martinez", contrasenaInicial: "Barbero2026!", barberoAsociado: "barbero1" },
+  { usuario: "raul.gonzalez", nombre: "Raul Gonzales", contrasenaInicial: "Barbero2026#", barberoAsociado: "barbero2" },
+  { usuario: "daniel.rojas", nombre: "Daniel Rojas", contrasenaInicial: "Barbero2026$", barberoAsociado: "barbero3" },
+  { usuario: "josue.vargas", nombre: "Josué Vargas", contrasenaInicial: "Barbero2026%", barberoAsociado: "barbero4" },
+  { usuario: "kevin.solano", nombre: "Kevin Solano", contrasenaInicial: "Barbero2026&", barberoAsociado: "barbero5" },
+  { usuario: "andres.chacon", nombre: "Andrés Chacón", contrasenaInicial: "Barbero2026*", barberoAsociado: "barbero6" },
+  { usuario: "luis.fernandez", nombre: "Luis Fernández", contrasenaInicial: "Barbero2026+", barberoAsociado: "barbero7" },
+  { usuario: "ana.mora", nombre: "Ana Mora", contrasenaInicial: "Barbero2026=", barberoAsociado: "barbero8" },
+  { usuario: "valeria.jimenez", nombre: "Valeria Jiménez", contrasenaInicial: "Barbero2026?", barberoAsociado: "barbero9" },
+];
 
 document.addEventListener("DOMContentLoaded", async () => {
   await sembrarAdminSiNoExiste();
@@ -18,6 +32,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   const formAdminLogin = document.getElementById("form-admin-login");
   const btnCerrarSesionAdmin = document.getElementById("btn-cerrar-sesion-admin");
   const listaAdminCitas = document.getElementById("lista-admin-citas");
+  const bienvenidaAdmin = document.getElementById("bienvenida-admin");
 
   if (formAdminLogin) {
     formAdminLogin.addEventListener("submit", manejarAdminLogin);
@@ -29,6 +44,11 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   if (listaAdminCitas) {
     protegerPaginaAdmin();
+
+    if (bienvenidaAdmin) {
+      bienvenidaAdmin.textContent = `Panel de Administrador · ${nombreDelAdminActual()}`;
+    }
+
     renderizarCitasAdmin();
     renderizarNotificacionesAdmin();
     renderizarSolicitudesReprogramacion();
@@ -36,25 +56,69 @@ document.addEventListener("DOMContentLoaded", async () => {
 });
 
 /**
- * Crea la cuenta de Alberto Martinez (rol "administrador") la primera vez
- * que se abre admin-login.html, si todavía no existe en localStorage.
+ * Crea las cuentas de administrador iniciales (rol "administrador") la
+ * primera vez que se abre admin-login.html, si todavía no existen.
  */
 async function sembrarAdminSiNoExiste() {
   const usuarios = obtenerUsuarios();
-  const yaExiste = usuarios.some((u) => u.usuario === ADMIN_USUARIO);
-  if (yaExiste) return;
+  let seModificaron = false;
 
-  const sal = generarSal();
-  const hash = await hashearContrasena(ADMIN_CONTRASENA_INICIAL, sal);
+  for (const cuenta of CUENTAS_ADMIN_INICIALES) {
+    const existente = usuarios.find((u) => u.usuario === cuenta.usuario);
 
-  usuarios.push({
-    nombre: ADMIN_NOMBRE,
-    usuario: ADMIN_USUARIO,
-    sal,
-    hash,
-    rol: "administrador",
-  });
-  guardarUsuarios(usuarios);
+    if (existente) {
+      // Cuenta creada en una versión anterior (antes de vincular cada
+      // administrador a un barbero): se completa el campo que falte.
+      if (!existente.barbero) {
+        existente.barbero = cuenta.barberoAsociado;
+        seModificaron = true;
+      }
+      continue;
+    }
+
+    const sal = generarSal();
+    const hash = await hashearContrasena(cuenta.contrasenaInicial, sal);
+
+    usuarios.push({
+      nombre: cuenta.nombre,
+      usuario: cuenta.usuario,
+      sal,
+      hash,
+      rol: "administrador",
+      barbero: cuenta.barberoAsociado,
+    });
+    seModificaron = true;
+  }
+
+  if (seModificaron) {
+    guardarUsuarios(usuarios);
+  }
+}
+
+/**
+ * Devuelve la cuenta (objeto usuario) del administrador con sesión activa.
+ */
+function adminActual() {
+  const usuarioActual = localStorage.getItem(CLAVE_SESION_ADMIN);
+  return obtenerUsuarios().find((u) => u.usuario === usuarioActual) || null;
+}
+
+/**
+ * Devuelve el nombre completo del administrador con sesión activa
+ * (para mostrarlo en el encabezado de admin.html).
+ */
+function nombreDelAdminActual() {
+  const admin = adminActual();
+  return admin ? admin.nombre : "Administrador";
+}
+
+/**
+ * Devuelve la clave de barbero (ej. "barbero1") asociada al administrador
+ * con sesión activa — determina qué citas puede ver y gestionar.
+ */
+function barberoDelAdminActual() {
+  const admin = adminActual();
+  return admin ? admin.barbero : null;
 }
 
 /**
@@ -105,7 +169,8 @@ function cerrarSesionAdmin() {
 }
 
 /**
- * Dibuja en pantalla TODAS las citas (de cualquier cliente), dentro de
+ * Dibuja en pantalla las citas del barbero asociado al administrador con
+ * sesión activa (no las de todos los barberos), dentro de
  * #lista-admin-citas (admin.html), con acciones de completar/cancelar.
  */
 function renderizarCitasAdmin() {
@@ -116,7 +181,8 @@ function renderizarCitasAdmin() {
     .querySelectorAll(".tarjeta-cita")
     .forEach((tarjeta) => tarjeta.remove());
 
-  const citas = obtenerCitas();
+  const barberoActual = barberoDelAdminActual();
+  const citas = obtenerCitas().filter((cita) => cita.barbero === barberoActual);
 
   if (citas.length === 0) {
     mensajeSinCitas.hidden = false;
@@ -135,7 +201,8 @@ function renderizarCitasAdmin() {
     nombreServicio.textContent = NOMBRES_SERVICIO[cita.servicio] || cita.servicio;
 
     const infoCita = document.createElement("p");
-    infoCita.textContent = `${NOMBRES_BARBERO[cita.barbero] || cita.barbero} · ${cita.fecha} · ${formatearHora12(cita.hora)}`;
+    const precioServicio = PRECIOS_SERVICIO[cita.servicio];
+    infoCita.textContent = `${NOMBRES_BARBERO[cita.barbero] || cita.barbero} · ${cita.fecha} · ${formatearHora12(cita.hora)} · ${precioServicio !== undefined ? formatearColones(precioServicio) : ""}`;
 
     const infoCliente = document.createElement("p");
     infoCliente.textContent = `Cliente: ${cita.usuario}`;
@@ -217,7 +284,8 @@ function cancelarCitaAdmin(idCita) {
 
 /**
  * Dibuja los avisos de citas canceladas por clientes (guardados en
- * localStorage por notificarCancelacionAlAdmin(), en citas.js).
+ * localStorage por notificarCancelacionAlAdmin(), en citas.js),
+ * filtrados al barbero del administrador con sesión activa.
  */
 function renderizarNotificacionesAdmin() {
   const contenedor = document.getElementById("notificaciones-admin");
@@ -227,7 +295,10 @@ function renderizarNotificacionesAdmin() {
     .querySelectorAll(".notificacion")
     .forEach((aviso) => aviso.remove());
 
-  const notificaciones = obtenerNotificacionesAdmin();
+  const barberoActual = barberoDelAdminActual();
+  const notificaciones = obtenerNotificacionesAdmin().filter(
+    (notificacion) => notificacion.barbero === barberoActual
+  );
 
   if (notificaciones.length === 0) {
     contenedor.hidden = true;
@@ -267,7 +338,8 @@ function descartarNotificacionAdmin(idNotificacion) {
 }
 
 /**
- * Dibuja las solicitudes de reprogramación pendientes, dentro de
+ * Dibuja las solicitudes de reprogramación pendientes para el barbero del
+ * administrador con sesión activa, dentro de
  * #lista-solicitudes-reprogramacion (admin.html), con botones para
  * aceptarlas o rechazarlas.
  */
@@ -280,7 +352,10 @@ function renderizarSolicitudesReprogramacion() {
     .querySelectorAll(".tarjeta-cita")
     .forEach((tarjeta) => tarjeta.remove());
 
-  const solicitudes = obtenerSolicitudesReprogramacion();
+  const barberoActual = barberoDelAdminActual();
+  const solicitudes = obtenerSolicitudesReprogramacion().filter(
+    (solicitud) => solicitud.barbero === barberoActual
+  );
 
   if (solicitudes.length === 0) {
     mensajeSinSolicitudes.hidden = false;
